@@ -1,0 +1,27 @@
+# CPU-only test suite. GitHub-hosted runners have no GPU: the CUDA tests (FlexAttention,
+# flash-attn, CUDA memory, SDPA kernels) and the tests that need data/finewebedu/val.bin
+# skip themselves here. The full suite runs on an A100 with `bash run_all.sh tests`.
+name: tests (CPU)
+
+on:
+  push:
+    branches: [master, swa-mla]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+      # the exact environment of uv.lock (torch 2.6.0+cu124 also runs on CPU), Python from .python-version
+      - run: uv sync --frozen
+      - run: uv run --frozen pytest tests/ -q

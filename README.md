@@ -1,4 +1,6 @@
 > **This fork** implements and measures a hybrid of Sliding Window Attention and Multi-head Latent Attention on nanoGPT — **start at [`REPORT_SWA_and_MLA.md`](REPORT_SWA_and_MLA.md)** (report in Italian). The original nanoGPT README follows unchanged.
+>
+> [![tests (CPU)](https://github.com/giovannipinna96/nanoGPT/actions/workflows/tests.yml/badge.svg)](https://github.com/giovannipinna96/nanoGPT/actions/workflows/tests.yml) CI runs the CPU tests only: GitHub runners have no GPU, so the CUDA tests skip there. The full suite was run on an A100.
 
 # nanoGPT
 
