@@ -39,7 +39,12 @@ for arg in sys.argv[1:]:
                 # if that goes wrong, just use the string
                 attempt = val
             # ensure the types match ok
-            assert type(attempt) == type(globals()[key])
+            # ... unless the default is None, which several of the hybrid-attention
+            # hyperparameters use to mean "derive me from head_dim" (kv_lora_rank,
+            # q_lora_rank, qk_rope_head_dim, ...). Overriding those from the command
+            # line necessarily changes the type, and the original assert would reject
+            # --kv_lora_rank=384 outright.
+            assert globals()[key] is None or type(attempt) == type(globals()[key])
             # cross fingers
             print(f"Overriding: {key} = {attempt}")
             globals()[key] = attempt

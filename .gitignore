@@ -10,3 +10,13 @@ __pycache__/
 input.txt
 env/
 venv/
+
+# --- hybrid-attn project ---
+.venv/
+out*/
+*.npy
+slurm-*.out
+/logs/
+wandb/
+# results/*.csv and *.png ARE tracked on purpose (threats.md R9: every number
+# in the report must have a CSV behind it)

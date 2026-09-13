@@ -1,3 +1,4 @@
+> **This fork** implements and measures a hybrid of Sliding Window Attention and Multi-head Latent Attention on nanoGPT — **start at [`REPORT_SWA_and_MLA.md`](REPORT_SWA_and_MLA.md)** (report in Italian). The original nanoGPT README follows unchanged.
 
 # nanoGPT
 

@@ -1,0 +1,52 @@
+[project]
+name = "hybrid-attention-nanogpt"
+version = "0.1.0"
+description = "Hybrid Sliding Window Attention + Multi-head Latent Attention on nanoGPT"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.5.0",        # >=2.5 required by FlexAttention (threats.md K5)
+    "numpy<2.0",
+    "transformers>=4.44",  # GPT.from_pretrained (GPT-2 weights) and scripts/env_report.py
+    "datasets",            # FineWeb-Edu subset
+    "tiktoken",
+    "tqdm",
+    "matplotlib",
+    "pandas",
+    "pytest",
+]
+
+[project.optional-dependencies]
+# flash-attn 2 gives the sliding window natively in the kernel (window_size=(W-1, 0))
+# and accepts any head dim that is a multiple of 8, so with symmetric MLA head dims
+# (v_head_dim == qk_nope + qk_rope, see GPTConfig.symmetric_head_dims) NOTHING is padded.
+# It is an extra and not a base dependency because it is a CUDA wheel: the CPU-only test
+# runs, the analysis scripts and the login node must all keep working without it.
+#
+# Pinned to a prebuilt wheel on purpose. Building flash-attn from source takes hours and
+# tens of GB of RAM and dies on the login node. The wheel must match python 3.12,
+# torch 2.6 + cu12 and the C++ ABI of the torch build: torch 2.6.0+cu124 from the
+# pytorch-cu124 index is built with _GLIBCXX_USE_CXX11_ABI=0 (check with
+# `python -c "import torch; print(torch._C._GLIBCXX_USE_CXX11_ABI)"`).
+#
+# ⚠️ The version below is 2.7.4.post1 and NOT the newest, deliberately. From v2.8.0 on,
+# the wheels named `cxx11abiFALSE` for torch2.6 are actually built with the NEW ABI, so
+# they import with
+#     ImportError: flash_attn_2_cuda...so: undefined symbol: _ZN3c105ErrorC2E...__cxx11...
+# Verified by symbol inspection, not by guessing:
+#     nm -u flash_attn_2_cuda*.so | grep -c _ZN3c105ErrorC2ENS_14SourceLocationESs   # old ABI
+#     nm -u flash_attn_2_cuda*.so | grep -c __cxx1112basic_string                     # new ABI
+# 2.7.4.post1 -> 1 / 0 (correct here).  2.8.0.post2 and 2.8.3.post1 -> 0 / 21 (wrong).
+# Before bumping this pin, run those two commands on the candidate wheel.
+#
+#     uv sync --extra flash
+flash = [
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiFALSE-cp312-cp312-linux_x86_64.whl",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

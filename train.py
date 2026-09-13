@@ -36,6 +36,18 @@ out_dir = 'out'
 eval_interval = 2000
 log_interval = 1
 eval_iters = 200
+# --- fixed validation set (considerazioni_finali.md 2.2, gate T0.3) ---
+# nanoGPT's estimate_loss draws a FRESH random batch at every evaluation, so the val loss
+# it prints carries a sampling variance on top of the seed variance. The differences this
+# project is looking for are 0.01-0.05 nats, the same order as that noise: left as is, the
+# grid would be comparing dataloaders, not architectures. val_batches batches are drawn
+# ONCE from a dedicated generator and reused by every cell and every seed.
+val_batches = 200         # 0 -> keep nanoGPT's random sampling
+val_seed = 1234           # fixed across cells AND seeds: it selects the measuring stick
+# Training seed. nanoGPT hardwires 1337; gate T0.3 needs the SAME cell trained twice with
+# a different one to measure sigma_seed, the significance threshold of the whole grid, and
+# a global declared here is the only thing configurator.py will write on (N1).
+train_seed = 1337
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
@@ -54,6 +66,37 @@ n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
+# --- hybrid attention (SWA x MLA) ---
+# Every one of these MUST be declared here AND appear in model_args below. configurator.py
+# raises on an unknown --flag, so a missing declaration fails loudly; but a config file is
+# exec'd into these globals, so `window_size = 256` in config/grid_*.py always "works" and
+# is silently dropped if the name never reaches GPTConfig. That is threat N1: the run then
+# trains with the default window and says nothing.
+attn_type = 'mha'         # 'mha' | 'gqa' | 'mla'
+n_kv_head = None          # GQA only; None -> n_head
+attn_pattern = 'G'        # tiled over layers, e.g. 'LLLG'; last layer forced global
+window_size = 256         # W visible tokens INCLUDING self
+force_last_global = True  # False only for the all-local cell 7 (news.md 6): left on,
+                          # attn_pattern='L' resolves to 7 local + 1 global (#8)
+kv_lora_rank = None       # MLA d_c;   None -> 4 * head_dim
+q_lora_rank = None        # MLA d'_c;  None -> no query compression
+qk_nope_head_dim = None   # None -> head_dim (full content dim, RoPE part is additive)
+qk_rope_head_dim = None   # None -> head_dim // 2
+v_head_dim = None         # None -> head_dim
+rope_mode = 'additive'    # MLA only: 'additive' (DeepSeek, the grid) | 'carved' (the
+                          # channel is taken out of head_dim, so d_qk == d_v) |
+                          # 'reconstructed' (no channel; the rebuilt k is rotated)
+absorb_mode = 'auto'      # MLA decode path: 'auto' (absorbed below T*) | 'never' |
+                          # 'always'. Runtime only -- it changes no weight, and training
+                          # always uses the naive form whatever this says
+symmetric_head_dims = False  # MLA only: force v_head_dim = qk_nope + qk_rope, so that
+                          # q/k/v share one width and impl='flash' needs no padding.
+                          # Off by default: it changes the parameter count (STEP 0)
+mla_up_init = 'bottleneck'  # MLA only: 'bottleneck' (every recorded run) | 'matched'
+                          # (k/v init variance equal to MHA, audit M-2)
+pos_encoding = 'learned'  # 'learned' | 'rope'
+rope_theta = 10000.0
+attn_impl = 'sdpa_mask'   # 'sdpa_mask' (oracle) | 'flex' (grid runs) | 'flash'
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
 max_iters = 600000 # total number of training iterations
@@ -103,7 +146,7 @@ print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
-torch.manual_seed(1337 + seed_offset)
+torch.manual_seed(train_seed + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
@@ -130,6 +173,42 @@ def get_batch(split):
         x, y = x.to(device), y.to(device)
     return x, y
 
+def build_fixed_val(n_batches, seed):
+    """Draw n_batches validation batches ONCE, from a generator of their own.
+
+    The generator is local on purpose: sampling through the global RNG would shift every
+    subsequent draw, so the training stream (and, in a from-scratch run, nothing else --
+    but the T1.1 oracle depends on that stream being reproducible) would change depending
+    on how large the val set is. Batches are kept on the CPU and moved per evaluation:
+    200 x 24 x 1024 int64 is ~39 MB per tensor (~79 MB for x and y together), which is not
+    worth holding on the device
+    where it would perturb the peak-memory numbers of Fase F.
+    """
+    g = torch.Generator().manual_seed(seed)
+    data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    ix = torch.randint(len(data) - block_size, (n_batches, batch_size), generator=g)
+    batches = []
+    for row in ix:
+        x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in row])
+        y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in row])
+        batches.append((x, y))
+    # Report the size of the measuring stick, and how much of it is actually distinct:
+    # the offsets are drawn with replacement from a val.bin of len(data) tokens, so the
+    # windows overlap and the nominal token count overstates the independent sample
+    # (considerazioni_finali.md 2.2 asks for the token count to be reported).
+    covered = torch.zeros(len(data), dtype=torch.bool)
+    for row in ix:
+        for i in row.tolist():
+            covered[i:i+block_size] = True
+    nominal = n_batches * batch_size * block_size
+    print(f"fixed val set: {n_batches} batches x {batch_size} x {block_size} = "
+          f"{nominal/1e6:.2f}M tokens ({covered.sum().item()/1e6:.2f}M distinct of "
+          f"{len(data)/1e6:.2f}M in val.bin), seed={seed}")
+    return batches
+
+
+VAL_SET = build_fixed_val(val_batches, val_seed) if val_batches else None
+
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
 best_val_loss = 1e9
@@ -145,7 +224,15 @@ if os.path.exists(meta_path):
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
+                  bias=bias, vocab_size=None, dropout=dropout,
+                  attn_type=attn_type, n_kv_head=n_kv_head, attn_pattern=attn_pattern,
+                  window_size=window_size, force_last_global=force_last_global, kv_lora_rank=kv_lora_rank,
+                  q_lora_rank=q_lora_rank, qk_nope_head_dim=qk_nope_head_dim,
+                  qk_rope_head_dim=qk_rope_head_dim, v_head_dim=v_head_dim,
+                  symmetric_head_dims=symmetric_head_dims, mla_up_init=mla_up_init,
+                  rope_mode=rope_mode, absorb_mode=absorb_mode,
+                  pos_encoding=pos_encoding, rope_theta=rope_theta,
+                  attn_impl=attn_impl) # start with model_args from command line
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -163,8 +250,19 @@ elif init_from == 'resume':
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
     # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-        model_args[k] = checkpoint_model_args[k]
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size',
+          'attn_type', 'n_kv_head', 'attn_pattern', 'window_size',
+          'force_last_global',
+          'kv_lora_rank', 'q_lora_rank', 'qk_nope_head_dim',
+          'qk_rope_head_dim', 'v_head_dim', 'symmetric_head_dims', 'rope_mode', 'mla_up_init',
+          'pos_encoding', 'rope_theta']:
+        # A checkpoint written before a field existed lacks its key: no checkpoint of the
+        # campaign has mla_up_init, and the earliest grid runs (cells 1-5) also predate
+        # force_last_global, symmetric_head_dims and rope_mode. Indexing a missing key
+        # died on a KeyError (audit B-6). Every such default is the only
+        # behaviour the code had before the field was added, i.e. the one those runs
+        # were trained with, so falling back to it rebuilds the same model.
+        model_args[k] = checkpoint_model_args.get(k, GPTConfig.__dataclass_fields__[k].default)
     # create the model
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
@@ -184,7 +282,12 @@ elif init_from.startswith('gpt2'):
     override_args = dict(dropout=dropout)
     model = GPT.from_pretrained(init_from, override_args)
     # read off the created config params, so we can store them into checkpoint correctly
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size',
+          'attn_type', 'n_kv_head', 'attn_pattern', 'window_size',
+          'force_last_global',
+          'kv_lora_rank', 'q_lora_rank', 'qk_nope_head_dim',
+          'qk_rope_head_dim', 'v_head_dim', 'symmetric_head_dims', 'rope_mode', 'mla_up_init',
+          'pos_encoding', 'rope_theta']:
         model_args[k] = getattr(model.config, k)
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
@@ -193,7 +296,7 @@ if block_size < model.config.block_size:
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+scaler = torch.amp.GradScaler('cuda', enabled=(dtype == 'float16'))
 
 # optimizer
 optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
@@ -211,19 +314,65 @@ if compile:
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 
+def _fingerprint(x):
+    """Order-sensitive checksum of a batch of token ids.
+
+    Position-weighted rather than a plain sum, so two batches holding the same tokens in
+    a different order do not collide. This is what makes "every cell evaluated on the
+    same data" a checkable claim instead of an assumption (considerazioni_finali.md 2.2).
+    """
+    w = torch.arange(1, x.numel() + 1, device=x.device, dtype=torch.int64)
+    return int((x.reshape(-1).to(torch.int64) * w).sum().item())
+
+
+_val_fingerprint = None
+
+
+def _check_val_fingerprint(fp):
+    """Print the val fingerprint once, and shout if it ever moves.
+
+    It must be identical across evaluations of one run AND across every cell of the grid.
+    With the original random sampling it is neither: architectures consume the global RNG
+    differently at init, so each cell would silently validate on different tokens.
+    """
+    global _val_fingerprint
+    if _val_fingerprint is None:
+        _val_fingerprint = fp
+        print(f"val fingerprint: {fp}")
+    elif fp != _val_fingerprint:
+        print(f"WARNING val fingerprint changed: {_val_fingerprint} -> {fp} "
+              f"(val set is NOT fixed; cross-cell comparison is unsound)")
+        _val_fingerprint = fp
+
+
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
     out = {}
     model.eval()
     for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split)
+        # 'val' walks the FIXED set built above, identical in every cell and every seed,
+        # so the number the grid compares has no sampling noise of its own (T0.3).
+        # 'train' stays randomly sampled: it is a diagnostic, and a fixed train subset
+        # would slowly turn into a memorisation probe rather than a loss estimate.
+        batches = VAL_SET if (split == 'val' and VAL_SET is not None) else None
+        n = len(batches) if batches is not None else eval_iters
+        losses = torch.zeros(n)
+        fingerprint = 0
+        for k in range(n):
+            if batches is not None:
+                X, Y = batches[k]
+                X, Y = X.to(device, non_blocking=True), Y.to(device, non_blocking=True)
+            else:
+                X, Y = get_batch(split)
+            if split == 'val':
+                fingerprint += _fingerprint(X)
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
+        if split == 'val':
+            _check_val_fingerprint(fingerprint)
     model.train()
     return out
 
