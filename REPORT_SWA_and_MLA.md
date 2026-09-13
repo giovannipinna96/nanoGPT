@@ -123,20 +123,14 @@ DeepSeek-V2 usa quindi un **positional channel separato** (decoupled RoPE):
 
 Poiché
 
-$$
-q^{C\top}\left(W^{UK} c\right) = \left(W^{UK\top} q^{C}\right)^{\top} c
-\qquad \text{e} \qquad
-\sum_s a_s W^{UV} c_s = W^{UV} \sum_s a_s c_s ,
-$$
+$\displaystyle q^{C\top}\left(W^{UK} c\right) = \left(W^{UK\top} q^{C}\right)^{\top} c \qquad \text{e} \qquad \sum_s a_s W^{UV} c_s = W^{UV} \sum_s a_s c_s ,$
 
 la ricostruzione può essere applicata alla **query** e all'**output** invece che a **ogni token in
 cache**. L'attention gira direttamente sul latent: stessa funzione, stessi weights, ordine diverso.
 La forma naive paga la projection per token in cache ($S$), quella absorbed per query ($T$). Il
 break-even è a
 
-$$
-T^{\ast} = \frac{d_c\,(d_{\text{nope}} + d_v)}{2d_c + d^R_h - d_{qk} - d_v} = 36.6 \ \text{query}
-$$
+$\displaystyle T^{\ast} = \frac{d_c\,(d_{\text{nope}} + d_v)}{2d_c + d^R_h - d_{qk} - d_v} = 36.6 \ \text{query}$
 
 nella configurazione usata. Il decode ($T = 1$) vuole la forma absorbed; prefill e training quella
 naive.
@@ -404,7 +398,7 @@ elementi, e questo limita ciò che ogni head può rappresentare in **ogni** laye
 quindi quasi solo il costo di MLA: +0.035 contro +0.044 di MLA da sola, una differenza (0.009) sotto
 soglia.
 
-![curve di loss](results/T6.4_loss_curves.png)
+![curve di loss](assets/T6.4_loss_curves.png)
 
 **Cosa mostra la figura.** Le curve di validation loss durante il training, due seed per cell,
 senza smoothing. In entrambi i pannelli l'asse y è la validation loss sul validation set fisso
