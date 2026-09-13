@@ -36,7 +36,7 @@ out_dir = 'out'
 eval_interval = 2000
 log_interval = 1
 eval_iters = 200
-# --- fixed validation set (considerazioni_finali.md 2.2, gate T0.3) ---
+# --- fixed validation set (gate T0.3) ---
 # nanoGPT's estimate_loss draws a FRESH random batch at every evaluation, so the val loss
 # it prints carries a sampling variance on top of the seed variance. The differences this
 # project is looking for are 0.01-0.05 nats, the same order as that noise: left as is, the
@@ -76,8 +76,8 @@ attn_type = 'mha'         # 'mha' | 'gqa' | 'mla'
 n_kv_head = None          # GQA only; None -> n_head
 attn_pattern = 'G'        # tiled over layers, e.g. 'LLLG'; last layer forced global
 window_size = 256         # W visible tokens INCLUDING self
-force_last_global = True  # False only for the all-local cell 7 (news.md 6): left on,
-                          # attn_pattern='L' resolves to 7 local + 1 global (#8)
+force_last_global = True  # False only for the all-local cell 7: left on,
+                          # attn_pattern='L' resolves to 7 local + 1 global
 kv_lora_rank = None       # MLA d_c;   None -> 4 * head_dim
 q_lora_rank = None        # MLA d'_c;  None -> no query compression
 qk_nope_head_dim = None   # None -> head_dim (full content dim, RoPE part is additive)
@@ -93,7 +93,7 @@ symmetric_head_dims = False  # MLA only: force v_head_dim = qk_nope + qk_rope, s
                           # q/k/v share one width and impl='flash' needs no padding.
                           # Off by default: it changes the parameter count (STEP 0)
 mla_up_init = 'bottleneck'  # MLA only: 'bottleneck' (every recorded run) | 'matched'
-                          # (k/v init variance equal to MHA, audit M-2)
+                          # (k/v init variance equal to MHA)
 pos_encoding = 'learned'  # 'learned' | 'rope'
 rope_theta = 10000.0
 attn_impl = 'sdpa_mask'   # 'sdpa_mask' (oracle) | 'flex' (grid runs) | 'flash'
@@ -182,7 +182,7 @@ def build_fixed_val(n_batches, seed):
     on how large the val set is. Batches are kept on the CPU and moved per evaluation:
     200 x 24 x 1024 int64 is ~39 MB per tensor (~79 MB for x and y together), which is not
     worth holding on the device
-    where it would perturb the peak-memory numbers of Fase F.
+    where it would perturb the peak-memory numbers of Phase F.
     """
     g = torch.Generator().manual_seed(seed)
     data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
@@ -194,8 +194,7 @@ def build_fixed_val(n_batches, seed):
         batches.append((x, y))
     # Report the size of the measuring stick, and how much of it is actually distinct:
     # the offsets are drawn with replacement from a val.bin of len(data) tokens, so the
-    # windows overlap and the nominal token count overstates the independent sample
-    # (considerazioni_finali.md 2.2 asks for the token count to be reported).
+    # windows overlap and the nominal token count overstates the independent sample.
     covered = torch.zeros(len(data), dtype=torch.bool)
     for row in ix:
         for i in row.tolist():
@@ -259,7 +258,7 @@ elif init_from == 'resume':
         # A checkpoint written before a field existed lacks its key: no checkpoint of the
         # campaign has mla_up_init, and the earliest grid runs (cells 1-5) also predate
         # force_last_global, symmetric_head_dims and rope_mode. Indexing a missing key
-        # died on a KeyError (audit B-6). Every such default is the only
+        # died on a KeyError. Every such default is the only
         # behaviour the code had before the field was added, i.e. the one those runs
         # were trained with, so falling back to it rebuilds the same model.
         model_args[k] = checkpoint_model_args.get(k, GPTConfig.__dataclass_fields__[k].default)
@@ -319,7 +318,7 @@ def _fingerprint(x):
 
     Position-weighted rather than a plain sum, so two batches holding the same tokens in
     a different order do not collide. This is what makes "every cell evaluated on the
-    same data" a checkable claim instead of an assumption (considerazioni_finali.md 2.2).
+    same data" a checkable claim instead of an assumption.
     """
     w = torch.arange(1, x.numel() + 1, device=x.device, dtype=torch.int64)
     return int((x.reshape(-1).to(torch.int64) * w).sum().item())

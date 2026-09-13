@@ -1,4 +1,4 @@
-"""Audit B-5 - the cell registry (cells.py) is the architecture the grid actually trained."""
+"""The cell registry (cells.py) is the architecture the grid actually trained."""
 import os
 import sys
 

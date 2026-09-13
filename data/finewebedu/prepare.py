@@ -2,7 +2,7 @@
 
 Mirrors data/openwebtext/prepare.py (same GPT-2 BPE, same uint16 memmap layout) but
 downloads only a few parquet shards of the `sample-10BT` subset instead of the 54 GB of
-OpenWebText: this project only needs ~1B tokens for the grid (plan.md STEP 11), and the
+OpenWebText: this project only needs ~1B tokens for the grid, and the
 point of the run is to demonstrate the mechanism, not to chase a headline number.
 
 Two phases, because on this cluster the login node has network access and the compute
@@ -16,7 +16,7 @@ filesystem has no free inodes; symlinks are created next to this file so that th
 unmodified train.py, which looks for data/<dataset>/train.bin, still finds them.
 
 It also reports the MEDIAN DOCUMENT LENGTH in tokens. That number is needed to read the
-results honestly (considerazioni_finali.md 2.4): if the median document is shorter than
+results honestly: if the median document is shorter than
 the sliding window W, the local layers already see whole documents and SWA loses nothing
 -- a null degradation that would NOT generalise to genuinely long contexts.
 """
@@ -111,7 +111,7 @@ def main():
                 os.remove(link)
             os.symlink(filename, link)
 
-    print("\n== dataset summary (considerazioni_finali.md 2.4) ==")
+    print("\n== dataset summary ==")
     for name, s in stats.items():
         print(f"{name}: {s['docs']:,} docs, {s['tokens']:,} tokens, "
               f"median doc {s['median_doc_tokens']} tokens, p90 {s['p90_doc_tokens']}")

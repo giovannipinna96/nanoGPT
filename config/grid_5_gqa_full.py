@@ -1,6 +1,6 @@
 # Grid cell 5_gqa_full -- the ISO-CACHE control, not an iso-parameter one.
 #
-# considerazioni_finali.md 2.1: the DeepSeek paper does not argue MLA against MHA, it
+# Why this cell: the DeepSeek paper does not argue MLA against MHA, it
 # argues it against GQA. Without this cell the obvious objection -- "GQA cuts the cache by
 # as much in three lines of code, so why MLA?" -- has no answer in the report.
 #

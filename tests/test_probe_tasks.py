@@ -1,4 +1,4 @@
-"""Unit tests for the Fase H task generators (probe_tasks).
+"""Unit tests for the Phase H task generators (probe_tasks).
 
 These exist because the first cluster run of T7.2 died on a generator bug that no local
 test could have caught: nothing checked that the requested number of pairs fitted in the
@@ -58,7 +58,7 @@ def test_assoc_recall_refuses_more_pairs_than_symbols():
 
 def test_distance_is_measured_from_the_query_backwards():
     """Distance is the span the model must bridge, which is what the receptive-field
-    argument (threats.md S3) is stated in -- not the absolute position of the fact."""
+    argument is stated in -- not the absolute position of the fact."""
     _, _, d_far = P.batch('needle', 1, 1024, _g(), depth=0)
     _, _, d_near = P.batch('needle', 1, 1024, _g(), depth=1000)
     assert d_far[0] > d_near[0]
@@ -69,8 +69,8 @@ def test_distance_is_measured_from_the_query_backwards():
 
 def test_markers_cannot_collide_with_real_text():
     """Ids 50257/50258 are the padding nanoGPT adds to round the vocab to 50304, so they
-    can never occur in tokenised text -- that is what makes the probe contamination-proof
-    (threats.md E9). Keys and values must also be disjoint from each other."""
+    can never occur in tokenised text -- that is what makes the probe contamination-proof.
+    Keys and values must also be disjoint from each other."""
     assert P.QUERY_TOKEN >= 50257 and P.SEP_TOKEN >= 50257
     assert not set(P.KEY_IDS) & set(P.VAL_IDS)
     assert max(P.FILLER_LO, 0) > 0 and P.FILLER_HI <= min(P.KEY_IDS)

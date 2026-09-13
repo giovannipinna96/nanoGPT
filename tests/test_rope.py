@@ -1,7 +1,7 @@
-"""Gate T1.3 - RoPE correctness (test_todo.md Fase 1).
+"""Gate T1.3 - RoPE correctness (phase 1).
 
 Two properties that need no training, plus the spectrum check that catches the
-truncated-spectrum bug of remediation.md #1.
+truncated-spectrum bug.
 """
 import math
 import os
@@ -33,7 +33,7 @@ def test_translation_invariance(dim):
     s2 = (rope_at(q, cos, sin, 105) * rope_at(k, cos, sin, 103)).sum()
     s3 = (rope_at(q, cos, sin, 1005) * rope_at(k, cos, sin, 1003)).sum()
     # the tables are stored in float32 (they are consumed in bf16/fp32 anyway), so the
-    # invariance holds to fp32 rounding, not exactly; test_todo.md suggests atol=1e-4
+    # invariance holds to fp32 rounding, not exactly
     assert torch.allclose(s1, s2, atol=1e-5), (s1 - s2).abs().item()
     assert torch.allclose(s1, s3, atol=1e-5), (s1 - s3).abs().item()
 
@@ -52,13 +52,13 @@ def test_norm_is_preserved(dim):
 
 @pytest.mark.parametrize("dim", [16, 32, 64])
 def test_spectrum_is_not_truncated(dim):
-    """remediation.md #1: the slowest channel must have a period far beyond block_size.
+    """The slowest channel must have a period far beyond block_size.
 
     Computing the frequencies on head_dim and keeping only the first qk_rope/2 of them
     gives a maximum wavelength of 471 tokens instead of ~35000, so positions alias
     inside the nominal context.
     """
-    # Read the spectrum off the table precompute_rope actually builds (audit B-2): a formula
+    # Read the spectrum off the table precompute_rope actually builds: a formula
     # recomputed here would keep passing if the implementation truncated the spectrum.
     # At position 1 every angle is its channel's frequency, below pi, and atan2 resolves
     # even the slowest one (~3e-4 rad) from the float32 sin/cos to far better than 1 token.
@@ -90,7 +90,7 @@ def test_rope_model_has_no_wpe_and_non_persistent_buffers():
     cfg = GPTConfig(block_size=64, vocab_size=65, n_layer=2, n_head=4, n_embd=128,
                     dropout=0.0, bias=False, pos_encoding='rope', attn_impl='sdpa_mask')
     m = GPT(cfg)
-    assert 'wpe' not in m.transformer, "wpe must be gone with RoPE (threats.md P2)"
+    assert 'wpe' not in m.transformer, "wpe must be gone with RoPE"
     sd = m.state_dict()
     assert not any('rope_cos' in k or 'rope_sin' in k for k in sd), \
         "rope tables must be non-persistent buffers, not checkpoint weights"

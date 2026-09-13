@@ -1,7 +1,7 @@
 """Hybrid KV cache: latent compression (MLA) x windowed allocation (SWA).
 
 This file is the original engineering contribution of the project. None of the three
-implementations audited in docs/audit_implementazioni.md has it:
+reference implementations reviewed for this project has it:
 
   * nanoGPT has no KV cache at all;
   * nanochat allocates torch.zeros(num_layers, B, seq_len, H, D), i.e. FLAT for every
@@ -25,8 +25,7 @@ Threats this file exists to avoid:
       Symptom: generation is sensible for the first W tokens and then degenerates.
       Mitigation: k^R is rotated by the caller BEFORE being written, at its true
       absolute position, and the cache stores the already-rotated value. The position
-      is then frozen inside the cached value and the buffer never needs to know it
-      (remediation.md #2 + #10, which fuse into a single fix).
+      is then frozen inside the cached value and the buffer never needs to know it.
   C2  reading a wrapped buffer in slot order instead of chronological order.
       Mitigation: once a buffer has wrapped, read() gathers with
       (start + arange(n)) % capacity; before that it returns a view, which is already in
@@ -74,7 +73,7 @@ class CacheSpec:
         * `is_local` must resolve the pattern WITH cfg.force_last_global. Leaving it out
           lets resolve_pattern force the last layer global, which turns cell 7 -- the
           all-local reading, the only configuration whose cache is constant in T -- into a
-          variant of cell 4, with no error anywhere (remediation.md #8).
+          variant of cell 4, with no error anywhere.
         * `v_head_dim` must come from the config. Today that is belt and braces: MLA does
           not cache v at all, and for mha/gqa GPTConfig pins v_head_dim to head_dim, so a
           hardcoded `head_dim` cannot yet produce a wrong size. It would the moment
@@ -127,7 +126,7 @@ class LayerCache:
     A LOCAL layer's buffer is a ring: it wraps and keeps the last `capacity` = W tokens,
     which is exactly its window. A GLOBAL layer's buffer must never wrap -- wrapping would
     keep only the last `capacity` tokens and silently turn the layer into a sliding window
-    -- so with `wraps=False` an overflowing write raises instead (audit M-5).
+    -- so with `wraps=False` an overflowing write raises instead.
     """
 
     def __init__(self, fields, batch_size, capacity, device, dtype, *, wraps):
@@ -149,7 +148,7 @@ class LayerCache:
         the window silently left stale keys in the buffer -- correct for the first W
         tokens of the prompt and wrong afterwards. Trimming makes the index vector a
         permutation, which is well defined, and keeps exactly the tokens the window can
-        still see (threats.md C2/C7).
+        still see.
         """
         first = next(iter(self.buffers))
         device = self.buffers[first].device
@@ -175,7 +174,7 @@ class LayerCache:
         0..cur_pos-1 already hold positions 0..cur_pos-1 in order, so the chronological
         read is a VIEW and copies nothing. That is every global layer, always. Gathering
         there instead copied the whole cache of every layer at every decode step, which
-        made the dense-cache cells up to 2.9x slower to decode than they are (audit A-2).
+        made the dense-cache cells up to 2.9x slower to decode than they are.
         After a wrap, slot 0 is not token 0, so the gather below is what keeps the mask
         and the ordering honest (threat C2); on a local layer it touches W entries.
         """

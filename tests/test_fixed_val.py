@@ -2,8 +2,8 @@
 
 nanoGPT's estimate_loss calls get_batch('val'), which draws fresh random offsets at every
 evaluation. The effect this project measures is 0.01-0.05 nats and that sampling noise is
-the same order, so without a fixed val set the grid would be comparing dataloaders
-(considerazioni_finali.md 2.2). These tests pin the property end to end, by running the
+the same order, so without a fixed val set the grid would be comparing dataloaders.
+These tests pin the property end to end, by running the
 real train.py: two independent processes must print the SAME val loss, and the old random
 path must be shown to differ -- otherwise the first assertion would pass vacuously.
 """

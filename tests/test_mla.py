@@ -1,4 +1,4 @@
-"""Gates T3.1 and T3.2 - MLA shapes and differentiability (test_todo.md Fase 3).
+"""Gates T3.1 and T3.2 - MLA shapes and differentiability (phase 3).
 
 T3.3 (full-rank MLA ~ MHA), T3.4 (no NaN) and T3.5 (parameter matching) need training
 and belong to STEP 7.
@@ -56,7 +56,7 @@ def test_cacheable_tensors_have_the_documented_shapes():
 
 
 def test_scale_comes_from_the_concatenated_dim():
-    """threats.md M1: 1/sqrt(d_nope + d_rope), never 1/sqrt(head_dim)."""
+    """The scale is 1/sqrt(d_nope + d_rope), never 1/sqrt(head_dim)."""
     c = cfg(n_embd=128, n_head=4)          # head_dim = 32
     mla = MultiHeadLatentAttention(c, 0)
     assert c.qk_nope_head_dim == 32 and c.qk_rope_head_dim == 16
@@ -65,16 +65,16 @@ def test_scale_comes_from_the_concatenated_dim():
 
 
 def test_rope_dims_are_additive_not_carved_out():
-    """remediation.md #5: qk_nope is the FULL head_dim, qk_rope is extra."""
+    """qk_nope is the FULL head_dim, qk_rope is extra."""
     c = cfg(n_embd=512, n_head=8)          # head_dim = 64
     assert c.qk_nope_head_dim == 64        # full, same content capacity as MHA
     assert c.qk_rope_head_dim == 32        # additive
     assert c.v_head_dim == 64
-    assert c.kv_lora_rank == 256           # 4 * head_dim (remediation.md #7)
+    assert c.kv_lora_rank == 256           # 4 * head_dim
 
 
 def test_joint_compression_single_latent():
-    """threats.md M3: one latent feeds both k and v, not two separate latents."""
+    """One latent feeds both k and v, not two separate latents."""
     c = cfg()
     mla = MultiHeadLatentAttention(c, 0)
     assert mla.kv_down.out_features == c.kv_lora_rank + c.qk_rope_head_dim
@@ -83,7 +83,7 @@ def test_joint_compression_single_latent():
 
 
 def test_the_latent_is_scale_invariant_which_is_what_the_rmsnorm_buys():
-    """threats.md M5: the RMSNorm on the compressed latent is invisible in every shape, so
+    """The RMSNorm on the compressed latent is invisible in every shape, so
     pin the one property it provides -- the latent that rebuilds k^C and v does not depend
     on the SCALE of x. Without it the low-rank bottleneck amplifies the variance and MLA
     training diverges, and nothing else in tests/ notices its removal.
@@ -122,7 +122,7 @@ def test_the_scale_reaches_the_attention_not_just_the_attribute():
 
 
 def test_output_projection_is_marked_for_scaled_init():
-    """threats.md M8: nanoGPT matches on the NAME c_proj; MLA needs an explicit flag."""
+    """nanoGPT matches on the NAME c_proj; MLA needs an explicit flag."""
     mla = MultiHeadLatentAttention(cfg(), 0)
     assert getattr(mla.o_proj, '_is_residual_proj', False) is True
     assert mla.o_proj.in_features == cfg().n_head * cfg().v_head_dim

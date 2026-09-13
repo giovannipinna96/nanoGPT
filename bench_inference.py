@@ -1,16 +1,16 @@
-"""Fase F - inference efficiency, measured BEFORE any training (gates T5.1-T5.3).
+"""Phase F - inference efficiency, measured BEFORE any training (gates T5.1-T5.3).
 
 An untrained model has exactly the same KV cache as a trained one, so the most
 convincing figure of the report costs no training time at all. If the GPU budget ran out
-here, half the deliverable would already be in hand (plan.md, Fase F).
+here, half the deliverable would already be in hand.
 
-Two regimes, deliberately kept in separate tables (threats.md B9):
+Two regimes, deliberately kept in separate tables:
 
   MEMORY  - exact arithmetic, kernel-independent. Measured against the allocator to
             confirm the formula, then reported analytically.
   LATENCY - kernel-dependent. Every table here runs on --impl sdpa_mask (dense mask + SDPA,
             uncompiled), so the flex padding of MLA's 48-wide score to 64 does NOT apply
-            to these numbers: it costs training throughput only (T5.4, audit M-3). What
+            to these numbers: it costs training throughput only (T5.4). What
             keeps MLA's latency a lower bound is the kernel: the specialised MLA kernels
             (FlashMLA, the vLLM integrations) need SM90 while this is an A100 (sm80). The
             naive decode (--absorb never) also rebuilds k and v for every cached token;
@@ -61,7 +61,7 @@ def build_model(cfg):
     layer's activations alive for a backward that never runs, and the memory numbers then
     measure those activations instead of the KV cache: T5.3b was once recorded that way,
     with 39 GB (MHA) to 69 GB (MLA) of retained activations next to the cache at T=8192
-    (audit A-1). Two independent guards: callers run under torch.no_grad(), and the
+    Two independent guards: callers run under torch.no_grad(), and the
     parameters do not require grad, so a caller that forgets the decorator records nothing.
     """
     assert not torch.is_grad_enabled(), (
@@ -152,7 +152,7 @@ def bench_cache(args, writer):
 def bench_latency(args, writer):
     """Decode latency and throughput. compile=False on purpose: a compiled model
     recompiles on every new sequence length during decoding, and we would be measuring
-    the compiler instead of the model (threats.md K4).
+    the compiler instead of the model.
 
     Kernel: --sdpa-kernel, 'fastest' by default. Every SDPA call runs the fastest kernel
     that accepts its shapes, chosen during the prefill and the warm-up, and the choice is
@@ -183,7 +183,7 @@ def _latency(args, writer):
                     # took the whole benchmark down instead of printing one OOM row --
                     # bench_kernels already allocated it inside its own try.
                     # Sized for T + decode_steps only, the global layers wrapped during the
-                    # last `warmup` timed steps (audit M-5).
+                    # last `warmup` timed steps.
                     cache = make_cache(cfg, B, T + args.warmup + args.decode_steps, 'cuda',
                                        torch.bfloat16)
                     idx = torch.randint(0, cfg.vocab_size, (B, T), device='cuda')
@@ -325,7 +325,7 @@ def bench_max_batch_decode(args, writer):
     and at large B that transient dominates: at the batch it reports, the MLA+SWA cache
     holds 5.5 GB of the 80 available, so the other 74 GB are prefill activations. The
     number it produces (2.10x) therefore measures the prefill, not the cache, and the
-    5-20x of test_todo.md T5.3 -- which is explicitly about "il batch e limitato dalla
+    5-20x target of gate T5.3 -- which is explicitly about "the batch is limited by the
     KV cache" -- is not what the probe was constraining.
 
     Here the cache is brought to position T WITHOUT running a prefill: the buffers are

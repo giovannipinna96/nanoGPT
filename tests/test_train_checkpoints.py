@@ -42,7 +42,7 @@ def test_mla_up_init_reaches_the_checkpoint(tmp_path):
 def test_resume_from_a_checkpoint_that_predates_the_newer_fields(tmp_path):
     """The grid checkpoints lack force_last_global, symmetric_head_dims, rope_mode and
     mla_up_init. Resuming them must fall back to the defaults, which reproduce how they
-    were trained, instead of dying on a KeyError (audit B-6)."""
+    were trained, instead of dying on a KeyError."""
     train(tmp_path)
     path = tmp_path / 'ckpt.pt'
     ckpt = torch.load(path, map_location='cpu', weights_only=False)

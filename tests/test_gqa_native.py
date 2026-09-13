@@ -1,7 +1,7 @@
 """GQA without the per-step copy: k and v reach attend() with n_kv_head heads.
 
 GroupedQueryAttention used to repeat_interleave k and v up to n_head right after reading the
-cache, i.e. to copy the whole cached context at every decode step -- the defect of audit A-2,
+cache, i.e. to copy the whole cached context at every decode step -- a defect
 confined to the GQA cell: at T=32768, B=64 its decode ran at 0.40x MHA while doing the same
 attention on a cache four times smaller. attend() now takes fewer key/value heads and hands
 them to the kernel natively (SDPA and flex with enable_gqa, flash-attn's own GQA). The one

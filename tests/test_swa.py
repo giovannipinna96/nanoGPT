@@ -1,4 +1,4 @@
-"""Gates T2.1, T2.2, T2.4 - sliding window attention (test_todo.md Fase 2).
+"""Gates T2.1, T2.2, T2.4 - sliding window attention (phase 2).
 
 T2.3 (real sparsity) is a wall-clock measurement and lives in analysis/sweep_window.sh,
 not here: it needs a GPU and a long context to produce a readable signal.
@@ -32,7 +32,7 @@ def test_degenerate_window_equals_causal(device, impl, window_extra):
 
     This single test catches roughly 90% of off-by-one errors: `q - kv < W` versus
     `<= W` shifts the window by one token, the model still trains, the loss is only
-    slightly worse, and nothing ever tells you (threats.md S1).
+    slightly worse, and nothing ever tells you.
     """
     T = 64
     q, k, v = qkv(T=T, device=device)
@@ -90,7 +90,7 @@ def test_block_mask_is_built_once_per_shape():
     q, k, v = qkv(T=64)
     for _ in range(5):
         attend(q, k, v, is_local=True, window=16, impl="flex")
-    assert mask_build_count() == 1, "the block mask must be cached (threats.md K2)"
+    assert mask_build_count() == 1, "the block mask must be cached"
     for _ in range(5):
         attend(q, k, v, is_local=False, impl="flex")
     assert mask_build_count() == 2, "a different shape signature builds exactly once more"

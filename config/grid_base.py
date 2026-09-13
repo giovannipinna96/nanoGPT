@@ -1,9 +1,9 @@
-# Shared settings for the 2x2 grid (plan.md FASE G, test_todo.md "Configurazione di
-# riferimento"), on the adopted configuration A. Every cell imports this and overrides
+# Shared settings for the 2x2 grid (phase G, reference configuration), on the adopted
+# configuration A. Every cell imports this and overrides
 # only its attention axes, so nothing but the attention can differ between cells.
 #
-# Deviation from the documents, declared: the reference block says n_head=8. Configuration
-# A uses n_head=16 (head_dim=32), adopted in STEP 7bis because head_dim=64 gives
+# Deviation from the initial design, declared: it had n_head=8. Configuration
+# A uses n_head=16 (head_dim=32), adopted because head_dim=64 gives
 # d_qk = 64+32 = 96 -> padded to 128, whose BACKWARD does not compile through FlexAttention
 # on sm80 (gates T3.4/T3.6). Every measurement of this campaign is on
 # configuration A, so the grid must be too.

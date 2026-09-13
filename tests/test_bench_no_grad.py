@@ -1,4 +1,4 @@
-"""Audit A-1 - every inference benchmark must run its forwards without autograd.
+"""Every inference benchmark must run its forwards without autograd.
 
 bench_max_batch_decode once ran with grad enabled. Each decode step then kept every layer's
 activations alive for a backward that never happened, so the resident-batch numbers of T5.3b

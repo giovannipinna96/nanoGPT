@@ -1,7 +1,7 @@
 """STEP 0 - the flash-attn 2 backend, and the symmetric head dims that make it usable.
 
 Why this file exists. `impl='flash'` carries the sliding window inside the kernel, so it
-pays neither of the two taxes of the flex path: no BlockMask to build (threats.md K2) and
+pays neither of the two taxes of the flex path: no BlockMask to build and
 no power-of-two padding of the head dim. The second one is only reachable for MLA if
 d_qk == d_v, which is what GPTConfig(symmetric_head_dims=True) arranges.
 
@@ -121,7 +121,7 @@ def test_flash_matches_dense_oracle(is_local, window):
 def test_flash_window_is_w_not_w_plus_one():
     """The kernel counts `left` tokens BEFORE self, this file counts W INCLUDING self.
     If the -1 were dropped, W=2 on flash would equal W=3 on the oracle and the whole
-    sliding-window story would be off by one token per layer (threats.md S1)."""
+    sliding-window story would be off by one token per layer."""
     q, k, v = qkv(T=64)
     out = attend(q.bfloat16(), k.bfloat16(), v.bfloat16(),
                  is_local=True, window=2, impl="flash").float()

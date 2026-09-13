@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Hybrid Sliding Window Attention + Multi-head Latent Attention on nanoGPT"
 requires-python = ">=3.10"
 dependencies = [
-    "torch>=2.5.0",        # >=2.5 required by FlexAttention (threats.md K5)
+    "torch>=2.5.0",        # >=2.5 required by FlexAttention
     "numpy<2.0",
     "transformers>=4.44",  # GPT.from_pretrained (GPT-2 weights) and scripts/env_report.py
     "datasets",            # FineWeb-Edu subset

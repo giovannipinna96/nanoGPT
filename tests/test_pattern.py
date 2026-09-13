@@ -1,4 +1,4 @@
-"""Gate T1.4 - resolve_pattern (test_todo.md Fase 1)."""
+"""Gate T1.4 - resolve_pattern (phase 1)."""
 import itertools
 import sys, os
 
@@ -19,7 +19,7 @@ def test_known_expansion():
 def test_shape_and_last_layer_global(n_layer, pattern):
     p = resolve_pattern(pattern, n_layer)
     assert len(p) == n_layer
-    assert p[-1] is False, "the last layer must be global (remediation.md #8)"
+    assert p[-1] is False, "the last layer must be global"
     assert not all(p), "at least one global layer is required"
 
 
@@ -39,7 +39,7 @@ def test_all_local_string_still_keeps_a_global_layer():
 
 
 def test_all_local_available_explicitly():
-    # cell 7 of news.md 6.2: the other reading of "hybrid", the only one whose KV cache
+    # grid cell 7: the other reading of "hybrid", the only one whose KV cache
     # is strictly constant in T. Reachable, but never by accident.
     assert resolve_pattern("L", 8, force_last_global=False) == [True] * 8
 

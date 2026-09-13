@@ -3,7 +3,7 @@
 A bug here does not crash: it produces benchmark numbers that are plausible and false.
 If T4.1 fails, the first suspect (9 times out of 10) is RoPE applied with the
 rolling-buffer slot index instead of the absolute position -- the tell is that
-generation stays sensible for the first W tokens and then degenerates (threats.md C1).
+generation stays sensible for the first W tokens and then degenerates.
 """
 import os
 import sys
@@ -150,8 +150,8 @@ def test_cache_contains_only_what_it_should(cell):
 def test_measured_cache_memory_matches_the_analytic_formula(cell, seq_len):
     """The headline table of the report is analytic; this checks it against the allocator.
 
-    max_memory_allocated on a live model would be dominated by weights and activations
-    (threats.md B7/C6), so the cache is allocated in isolation between a reset and a
+    max_memory_allocated on a live model would be dominated by weights and activations,
+    so the cache is allocated in isolation between a reset and a
     measurement.
     """
     cfg = GPTConfig(block_size=1024, vocab_size=50304, n_layer=8, n_head=8, n_embd=512,

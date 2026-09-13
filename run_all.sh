@@ -1,5 +1,5 @@
 #!/bin/bash
-# run_all.sh -- one command per result (test_todo.md T8.3).
+# run_all.sh -- one command per result.
 #
 #   bash run_all.sh <target> [args]           run here (most targets need an A100)
 #
@@ -10,14 +10,14 @@
 #   tests                            every unit-test gate (CUDA tests skip without a GPU)
 #   baseline             T0.1        unmodified nanoGPT, shakespeare_char (1.4697 +/- 0.02)
 #   validation           T1.1 T1.3 T2.3 T2.5 T3.3   the small correctness runs
-#   bench                Fase F      T5.1-T5.5, on UNTRAINED models (before any training)
+#   bench                Phase F     T5.1-T5.5, on UNTRAINED models (before any training)
 #   cell <cell> <seed>   T6.1        one grid run, e.g.  bash run_all.sh cell 4_mla_swa 1337
 #   grid                 T6.1        the six campaign cells x seeds 1337/2024 (12 runs, ~1 h each)
-#   faseh                Fase H      E8, T7.1-T7.3
+#   faseh                Phase H     E8, T7.1-T7.3
 #   analysis             T0.3 T3.5 T6.2-T6.4 T7 T8.1 T8.2   tables and figures (CPU only)
-#   step0c                           carved cells 8 and 9 x 2 seeds, their analysis, their Fase H
-#   seed3                            third seed (3141) for cells 4 and 9, its Fase H, 3-seed reading
-#   remeasure            T5.2-T5.3b T8.1 T8.2   benchmarks after the audit fixes -> results/v2/
+#   step0c                           carved cells 8 and 9 x 2 seeds, their analysis, their Phase H
+#   seed3                            third seed (3141) for cells 4 and 9, its Phase H, 3-seed reading
+#   remeasure            T5.2-T5.3b T8.1 T8.2   benchmarks after the fixes -> results/v2/
 #   all                              everything above except `cell`
 #
 # Paths come from env.sh (HYBRID_ATTN_OUT etc.), which is specific to Demetra: /u has no
@@ -61,7 +61,7 @@ t_validation() {
 }
 
 t_bench() {
-  # --absorb never: Fase F was measured before matrix absorption existed (naive decode)
+  # --absorb never: Phase F was measured before matrix absorption existed (naive decode)
   # kv_cache_analytic.py now also lists cells 8 and 9: the 30 recorded rows come back
   # unchanged, followed by 10 carved rows
   cpu "uv run python analysis/kv_cache_analytic.py --out results/T5.1_kv_cache_analytic.csv"
@@ -88,22 +88,22 @@ t_analysis() {
 }
 
 t_step0c() {
-  # the reading of every number below is fixed in results/STEP0c_carving_preregistration.md
+  # the rule for reading these numbers was fixed before the runs (pre-registered)
   for c in "${CARVED[@]}"; do for s in "${SEEDS[@]}"; do t_cell "$c" "$s"; done; done
   cpu "mkdir -p results/step0c && uv run python analysis/grid_analysis.py --root $OUT/grid --cells $ALL8 --out results/step0c"
   gpu "bash analysis/run_faseh_carved.sh"
 }
 
 t_seed3() {
-  # addendum 2 of results/STEP0c_carving_preregistration.md
+  # third seed of the pre-registered carved-cell contrast
   t_cell 4_mla_swa 3141
   t_cell 9_mla_swa_carved16 3141
   gpu "bash analysis/run_faseh_seed3.sh"
 }
 
 t_remeasure() {
-  # T5.2, T5.3 and T5.3b of all eight benchmark cells after the audit fixes (A-1, A-2, M-5,
-  # B-1 and the GQA copy), with the fastest SDPA kernel for every call shape
+  # T5.2, T5.3 and T5.3b of all eight benchmark cells after the fixes to the
+  # benchmark code, with the fastest SDPA kernel for every call shape
   # (bench_inference.py --sdpa-kernel, default 'fastest'), then T8.1 and T8.2 from them.
   #
   # The absorbed column is measured with --absorb auto, NOT always, and is labelled
@@ -112,7 +112,7 @@ t_remeasure() {
   # left by the prefill is the same either way, so the timed decode is the one 'always'
   # would time. 'always' also forces the absorbed form on the prefill, whose per-head
   # widths of 272/256 instead of 48/32 cost ~3.9x the memory per sequence at T=32768 and
-  # OOM at B=64 on 80 GB while the absorbed decode itself would fit (measured in the audit).
+  # OOM at B=64 on 80 GB while the absorbed decode itself would fit (measured).
   local L="--latency-lengths 1024 8192 32768 --batch-sizes 1 64"
   gpu "uv run python bench_inference.py --tests latency --absorb never $L --out results/v2/T5.2_latency_never.csv && uv run python bench_inference.py --tests latency --absorb auto $L --out results/v2/T5.2_latency_auto.csv"
   gpu "uv run python bench_inference.py --tests max_batch --absorb never --batch-lengths 8192 --out results/v2/T5.3_max_batch_prefill.csv"

@@ -1,10 +1,10 @@
-"""Fase H -- long-context probe (gates T7.1, T7.2, T7.3).
+"""Phase H -- long-context probe (gates T7.1, T7.2, T7.3).
 
 This is the "drawbacks" section the task asks for literally: the place where the hybrid is
 expected to LOSE. Hiding it would make the work worse, so the probe is built to be able to
 show a loss, and to say so when it cannot measure anything at all.
 
-The mandatory pre-check comes first (threats.md E8). Before comparing cells, cell 1 -- the
+The mandatory pre-check comes first (E8). Before comparing cells, cell 1 -- the
 plain global-attention baseline -- must solve the task above chance. If it does not, a flat
 curve across all cells says nothing about SWA: it says the model is too small for the task,
 and the honest move is to change the task, not the conclusion.

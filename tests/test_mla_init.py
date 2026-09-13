@@ -1,4 +1,4 @@
-"""Audit M-2 - the init of the MLA up-projections, and the 'matched' alternative.
+"""The init of the MLA up-projections, and the 'matched' alternative.
 
 The default ('bottleneck', std = r^-1/2, what every recorded run used) gives MLA's k and v
 2.2x the init std of MHA's for the same unit-RMS input, so the MLA-vs-MHA loss gap of the

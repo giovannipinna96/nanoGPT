@@ -1,15 +1,15 @@
-"""Synthetic long-context tasks for Fase H (gates T7.1, T7.2, T7.3).
+"""Synthetic long-context tasks for Phase H (gates T7.1, T7.2, T7.3).
 
-Why synthetic and not natural-language needle-in-a-haystack: threats.md E8. A 25M model
+Why synthetic and not natural-language needle-in-a-haystack? A 25M model
 trained on ~1B tokens almost certainly cannot retrieve a fact stated in English from a
 long context. Every cell would sit at chance, the curve would be flat, and the flatness
 would be indistinguishable from "the local mask is not doing anything" -- no signal either
 way. The mitigation E8 prescribes is a task a small model CAN learn: a dedicated-vocabulary
 retrieval task, fine-tuned on briefly and equally for every cell. finetune_probe.py
-implements that fine-tuning, but no script of the campaign calls it (audit B-4): every Fase H
+implements that fine-tuning, but no script of the campaign calls it: every Phase H
 number comes from the grid checkpoints evaluated zero-shot.
 
-Contamination (threats.md E9): if the probe format occurred in the training data the test
+Contamination: if the probe format occurred in the training data the test
 would measure memorisation instead of retrieval. The two MARKERS are ids 50257/50258, the
 padding nanoGPT adds to round the vocabulary to 50304: they cannot occur in tokenised text,
 so the exact sequence shape cannot have been seen. Keys and values are ordinary (rare)
@@ -57,8 +57,8 @@ def make_needle(seq_len, depth, g):
 
     The distance returned is (seq_len - 1) - (depth + 1) = seq_len - depth - 2, i.e. from
     the query position (the last token) back to the VALUE the model must reproduce. That
-    distance, not the absolute position, is what the local receptive field limits
-    (threats.md S3). It is the `distance` column of results/T7.*.csv.
+    distance, not the absolute position, is what the local receptive field limits.
+    It is the `distance` column of results/T7.*.csv.
     """
     k = int(torch.randint(N_SYMBOLS, (1,), generator=g))
     v = int(torch.randint(N_SYMBOLS, (1,), generator=g))
@@ -80,7 +80,7 @@ def make_assoc_recall(seq_len, n_pairs, query_index, g):
     and the cap is the reason the pairs are spread rather than packed. Packed, 64 pairs
     occupy 128 tokens; at seq_len=1024 they would all sit just before the query and the
     task would only ever probe short distances -- which is precisely what T7.2 exists NOT
-    to do ("chiedere il valore di una chiave vista molto prima").
+    to do ("ask for the value of a key seen much earlier").
 
     Spread out, every pair is a distractor for every other one, so unlike the needle task
     there is no stretch of ignorable filler around the answer: the model has to hold the

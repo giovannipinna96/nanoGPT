@@ -1,4 +1,4 @@
-"""Gate T1.2 - the three attention backends must agree (test_todo.md Fase 1).
+"""Gate T1.2 - the three attention backends must agree (phase 1).
 
 `sdpa_mask` is the oracle: a dense boolean mask, correct by construction and slow.
 `flex` is what every grid cell uses. If they disagree, the usual cause is a mask_mod

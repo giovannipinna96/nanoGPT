@@ -1,4 +1,4 @@
-"""Audit M-5 - a GLOBAL layer must refuse to wrap its buffer.
+"""A GLOBAL layer must refuse to wrap its buffer.
 
 A local layer's ring buffer is supposed to wrap: it keeps the last W tokens, which is the
 window. A global layer's buffer wrapping means it silently keeps only the last max_seq_len

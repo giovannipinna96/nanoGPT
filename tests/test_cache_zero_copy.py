@@ -1,4 +1,4 @@
-"""Audit A-2 - reading the cache must not copy it while the buffer has not wrapped.
+"""Reading the cache must not copy it while the buffer has not wrapped.
 
 The read used to gather every layer's buffer at every decode step, global layers included,
 which never wrap. On the dense-cache cells that copy was most of the decode time (MHA at

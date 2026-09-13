@@ -1,4 +1,4 @@
-"""Audit B-1 - a decode step whose keys are all visible must not build a mask.
+"""A decode step whose keys are all visible must not build a mask.
 
 The mask caches are keyed on (T, S, q_offset), and during decoding S or q_offset changes at
 every step, so each step built -- and kept forever -- a new mask: a BlockMask on flex, a

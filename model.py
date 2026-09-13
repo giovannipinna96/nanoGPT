@@ -19,7 +19,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.attention import SDPBackend
 
-try:  # FlexAttention needs torch >= 2.5 (threats.md K5)
+try:  # FlexAttention needs torch >= 2.5
     from torch.nn.attention.flex_attention import create_block_mask, flex_attention
     _HAS_FLEX = True
 except ImportError:  # pragma: no cover
@@ -40,9 +40,9 @@ class RMSNorm(nn.Module):
     """RMSNorm over the last dimension, with the norm computed in fp32.
 
     DeepSeek-V2 3.1.2 puts an RMSNorm on the compressed latents; without it the low-rank
-    bottleneck amplifies the variance and MLA training diverges (threats.md M5). The
+    bottleneck amplifies the variance and MLA training diverges. The
     reduction is done in fp32 because an RMS taken in bf16 over a low-rank bottleneck is
-    numerically fragile (threats.md X3).
+    numerically fragile.
     """
 
     def __init__(self, ndim, eps=1e-6):
@@ -73,8 +73,8 @@ def precompute_rope(dim, max_seq, theta=10000.0, device=None):
     The first row is mla-experiments' own shape and is where the often-quoted 471 comes
     from; the second is configuration A, so do not carry those two figures over to this
     repository. Either way the period collapses below the context length, positions alias
-    well inside 1024 tokens, and the needle probe would blame SWA for a RoPE defect
-    (remediation.md #1, audit_implementazioni.md 1.3). Gate T1.3 checks the spectrum.
+    well inside 1024 tokens, and the needle probe would blame SWA for a RoPE defect.
+    Gate T1.3 checks the spectrum.
 
     Returns (max_seq, dim//2) tensors; the caller duplicates them to `dim` because we
     use the half-split (GPT-NeoX / HuggingFace) convention, see apply_rope.
@@ -98,12 +98,12 @@ def apply_rope(x, cos, sin):
     cos, sin: (T, D//2) already selected for the ABSOLUTE positions of those T tokens.
     Passing the positions in explicitly (rather than assuming arange(T)) is what makes
     incremental decoding correct: during decoding the position is the absolute one, not
-    the index of a rolling-buffer slot (threats.md C1).
+    the index of a rolling-buffer slot.
 
     Convention: half-split (GPT-NeoX / HuggingFace / DeepSeek), i.e. channel i pairs
     with channel i+D/2. The interleaved convention is an equally valid rotation, but the
     two MUST NOT be mixed between q and k or the model simply trains worse with no
-    symptom (threats.md P1). We use half-split because it is the convention of the
+    symptom. We use half-split because it is the convention of the
     DeepSeek reference code in transformers (modeling_deepseek_v3), so the MLA module
     stays comparable to it -- but no such comparison is run in this repository. What is
     tested is the rotation itself: translation invariance, norm preservation and an
@@ -119,13 +119,13 @@ def resolve_pattern(pattern, n_layer, force_last_global=True):
     The string is tiled cyclically over the layers, e.g. 'LLLG' with n_layer=8 gives
     L L L G L L L G (ratio 3:1, the Gemma-3 style interleaving of soluzione.md 1.2).
 
-    The last layer is forced GLOBAL (remediation.md #8): it is the layer that feeds
+    The last layer is forced GLOBAL: it is the layer that feeds
     lm_head directly, and it is the convention of Gemma 3 and nanochat. Note this
     changes the number of global layers and therefore the analytic KV-cache formula,
     so it must be stated in the report.
 
-    `force_last_global=False` exists for the all-local reading of "hybrid" (cell 7 of
-    news.md 6.2), which is the only configuration whose KV cache is strictly constant
+    `force_last_global=False` exists for the all-local reading of "hybrid" (grid cell 7),
+    which is the only configuration whose KV cache is strictly constant
     in T. It is not the default: the default is the interleaved design.
     """
     assert len(pattern) > 0, "empty attn_pattern"
@@ -137,7 +137,7 @@ def resolve_pattern(pattern, n_layer, force_last_global=True):
     return p
 
 # Block masks are expensive to build and must NOT be rebuilt on every forward: doing so
-# makes sliding-window attention SLOWER than full attention (threats.md K2). The cache
+# makes sliding-window attention SLOWER than full attention. The cache
 # key is the full shape signature, so a new (T, S, window) combination builds once.
 _MASK_CACHE = {}
 _MASK_BUILDS = [0]   # cache misses, i.e. how many masks were actually constructed
@@ -148,7 +148,7 @@ def mask_build_count():
 
     Rebuilding create_block_mask on every forward is what makes sliding-window
     attention SLOWER than full attention -- a disorienting symptom that looks like the
-    window being useless (threats.md K2). The dense path shares the counter because the
+    window being useless. The dense path shares the counter because the
     same caching argument applies to it, and tests/test_decode_masks.py checks both
     backends with it.
     """
@@ -164,12 +164,12 @@ def _mask_mod(is_local, window, q_offset):
     Mistral 2 phrases it as "between i-W and i", inclusive on both ends, which is W+1
     tokens; FlexAttention and flash-attn converge on W. Neither is wrong, but mixing two
     conventions between the reference path and the fast path makes the equivalence tests
-    fail for what looks like a numerical bug (threats.md S1). We use W everywhere and
+    fail for what looks like a numerical bug. We use W everywhere and
     verify it by counting visible entries per row (gate T2.2).
 
     `q_offset` is the absolute position of the first query, which is non-zero during
     incremental decoding; the diagonal stays visible (q >= kv, not >) so no row can be
-    fully masked (threats.md S4).
+    fully masked.
     """
     if not is_local:
         def mod(b, h, q_idx, kv_idx):
@@ -195,7 +195,7 @@ def get_dense_mask(T, S, is_local, window, device, q_offset=0):
     """Dense boolean mask (T, S), True = visible. Correctness oracle only.
 
     A dense mask is CORRECT but saves nothing: the full T x S score matrix is still
-    allocated and every dot product is still computed (threats.md S2). It is the
+    allocated and every dot product is still computed. It is the
     reference path used by the tests, never by the grid runs.
     """
     key = ("dense", T, S, is_local, window if is_local else -1, q_offset, str(device))
@@ -380,16 +380,15 @@ def attend(q, k, v, *, is_local=False, window=None, dropout_p=0.0, impl="sdpa_ma
     Backends:
       'sdpa_mask' - dense boolean mask + SDPA. Always available, correct, NOT sparse. The
                     backend of the inference benchmarks (bench_inference.py --impl), of the
-                    Fase H probe (probe_longctx.py --impl) and, always, of the absorbed
-                    decode path (audit M-3).
+                    Phase H probe (probe_longctx.py --impl) and, always, of the absorbed
+                    decode path.
       'flex'      - FlexAttention block-sparse. The backend of every grid TRAINING run, so
-                    the kernel is a constant across cells (threats.md K3).
+                    the kernel is a constant across cells.
       'flash'     - flash-attn 2 with window_size; an optional extra (`uv sync --extra
                     flash`), see pyproject.toml.
 
     `is_causal=True` is never used: SDPA silently IGNORES attn_mask when is_causal is
-    set, which would make the sliding window disappear while the loss still looks great
-    (threats.md K1).
+    set, which would make the sliding window disappear while the loss still looks great.
     """
     S = k.size(-2)
     T = q.size(-2)
@@ -404,7 +403,7 @@ def attend(q, k, v, *, is_local=False, window=None, dropout_p=0.0, impl="sdpa_ma
     # One query at the last position with every key visible: a decode step on a global
     # layer, or on a local layer whose ring buffer holds at most W keys. No mask is needed,
     # and building one here per step is what grew the mask caches without bound while
-    # decoding, since their key changes with S and q_offset at every step (audit B-1).
+    # decoding, since their key changes with S and q_offset at every step.
     all_visible = T == 1 and q_offset >= S - 1 and (not is_local or q_offset < window)
 
     if impl == "flex":
@@ -414,13 +413,13 @@ def attend(q, k, v, *, is_local=False, window=None, dropout_p=0.0, impl="sdpa_ma
                       else get_block_mask(T, S, is_local, window, q.device, q_offset))
         # FlexAttention (torch 2.6) rejects head dims that are not powers of two, and
         # MLA's score dimension is qk_nope + qk_rope = 32 + 16 = 48 on configuration A
-        # (head_dim 32, remediation.md #5). Zero-padding q and k to 64 adds exactly zero
+        # (head_dim 32). Zero-padding q and k to 64 adds exactly zero
         # to every dot product, so the result is mathematically identical -- verified
         # against the dense oracle in tests/test_mla.py. The scale is passed explicitly,
-        # so it stays 1/sqrt(48) and is NOT recomputed from the padded width (threats.md
-        # M1). Cost: the attention matmuls run at 64 instead of 48, ~33% more attention
+        # so it stays 1/sqrt(48) and is NOT recomputed from the padded width.
+        # Cost: the attention matmuls run at 64 instead of 48, ~33% more attention
         # FLOPs on the MLA cells. Only flex pays it, i.e. training throughput (T5.4); the
-        # decode latency of T5.2 runs on sdpa_mask and has no padding (audit M-3). The
+        # decode latency of T5.2 runs on sdpa_mask and has no padding. The
         # KV-cache numbers are analytic and unaffected.
         d_qk, d_v = q.size(-1), v.size(-1)
         pad_qk, pad_v = _pad_to_pow2(d_qk), _pad_to_pow2(d_v)
@@ -431,8 +430,7 @@ def attend(q, k, v, *, is_local=False, window=None, dropout_p=0.0, impl="sdpa_ma
         # systematically worse. An explicit scale is therefore mandatory whenever we pad.
         assert pad_qk == d_qk or scale is not None, (
             f"attend() is padding the head dim {d_qk} -> {pad_qk}; pass the scale "
-            f"explicitly (1/sqrt({d_qk})) or the padded width would silently set it "
-            "(threats.md M1)")
+            f"explicitly (1/sqrt({d_qk})) or the padded width would silently set it")
         if pad_qk != d_qk:
             q = F.pad(q, (0, pad_qk - d_qk))
             k = F.pad(k, (0, pad_qk - d_qk))
@@ -479,7 +477,7 @@ def attend(q, k, v, *, is_local=False, window=None, dropout_p=0.0, impl="sdpa_ma
             f"flash-attn assumes bottom-right causal alignment (q_offset == S - T == "
             f"{S - T}), got q_offset={q_offset}; use impl='sdpa_mask' or 'flex' instead")
         # (4) window convention: this file counts W visible tokens INCLUDING self, the
-        #     kernel counts `left` tokens BEFORE self (threats.md S1), hence W - 1.
+        #     kernel counts `left` tokens BEFORE self, hence W - 1.
         w = (window - 1, 0) if is_local else (-1, -1)
         y = flash_attn_func(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
                             dropout_p=dropout_p, softmax_scale=scale, causal=True,
@@ -512,7 +510,7 @@ class CausalSelfAttention(nn.Module):
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
         # output projection
         self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
-        self.c_proj._is_residual_proj = True   # scaled init marker (threats.md M8)
+        self.c_proj._is_residual_proj = True   # scaled init marker
         # regularization
         self.resid_dropout = nn.Dropout(config.dropout)
         self.n_head = config.n_head
@@ -538,21 +536,21 @@ class CausalSelfAttention(nn.Module):
             # plain MHA rotates the whole head; only MLA splits the head into a content
             # part and a smaller RoPE part (eq. 16-17 of DeepSeek-V2). cos/sin are
             # already selected for the ABSOLUTE positions of these T tokens, so the
-            # rotation is correct during decoding too (threats.md C1).
+            # rotation is correct during decoding too.
             q = apply_rope(q, cos, sin)
             k = apply_rope(k, cos, sin)
 
         q_offset = None
         if cache is not None:
             # k and v are cached POST-RoPE, so the position is frozen inside the value
-            # and the rolling buffer never has to reconstruct it (remediation.md #10).
+            # and the rolling buffer never has to reconstruct it.
             k, v, q_offset = _cache_step(cache, self.layer_idx, T,
                                          k=k.transpose(1, 2), v=v.transpose(1, 2))
             k, v = k.transpose(1, 2), v.transpose(1, 2)
 
         # causal self-attention, dispatched through the shared backend. The original
         # nanoGPT line used is_causal=True, which silently ignores attn_mask and makes a
-        # sliding window inexpressible (threats.md K1) -- it is replaced, not extended.
+        # sliding window inexpressible -- it is replaced, not extended.
         y = attend(q, k, v, is_local=self.is_local, window=self.window,
                    dropout_p=self.dropout if self.training else 0.0,
                    impl=self.attn_impl, q_offset=q_offset)
@@ -568,7 +566,7 @@ class GroupedQueryAttention(nn.Module):
     DeepSeek-V2 does not motivate MLA against MHA, it motivates it against GQA, which is
     the industry standard for shrinking the KV cache. Without this cell the obvious
     question -- "GQA cuts the cache by as much in three lines of code, why would I pay
-    for MLA?" -- has no answer (considerazioni_finali.md 2.1).
+    for MLA?" -- has no answer.
 
     It is also the iso-cache comparison: with n_embd=512, n_head=16, head_dim=32, the
     grid's n_kv_head=4 and kv_lora_rank=256 (config/grid_5_gqa_full.py),
@@ -672,7 +670,7 @@ class MultiHeadLatentAttention(nn.Module):
         q^C/q^R  (B, n_h, T, d_nope) / (..., d^R_h)
         k^C, v   (B, n_h, T, d_nope) / (..., d_v)    rebuilt from c_KV, never cached
 
-    Five things that are easy to get wrong and produce no symptom (threats.md M1-M5):
+    Five things that are easy to get wrong and produce no symptom:
 
     1. the softmax scale is 1/sqrt(qk_nope + qk_rope), NOT 1/sqrt(head_dim). The
        concatenated query has dimension d_nope + d^R_h, so using sqrt(d_h) inflates the
@@ -719,7 +717,7 @@ class MultiHeadLatentAttention(nn.Module):
             self.q_down = nn.Linear(config.n_embd, config.q_lora_rank, bias=False)
             self.q_norm = RMSNorm(config.q_lora_rank)
             self.q_up = nn.Linear(config.q_lora_rank, self.n_head * d_qk, bias=False)
-            self.q_up._is_bottleneck_up_proj = True   # calibrated init (threats.md M7)
+            self.q_up._is_bottleneck_up_proj = True   # calibrated init
 
         # --- key/value path, eq. (9)-(11) + (15) ---
         # W^DKV and W^KR fused into one Linear, then split: both act on x, so this is
@@ -729,10 +727,10 @@ class MultiHeadLatentAttention(nn.Module):
         self.kv_norm = RMSNorm(config.kv_lora_rank)
         # W^UK and W^UV fused: ONE joint latent feeds both (this is the "joint" in
         # low-rank joint compression; two separate latents would double the cache and
-        # would not be MLA at all, threats.md M3)
+        # would not be MLA at all)
         self.kv_up = nn.Linear(config.kv_lora_rank,
                                self.n_head * (self.d_nope + self.d_v), bias=False)
-        self.kv_up._is_bottleneck_up_proj = True   # calibrated init (threats.md M7)
+        self.kv_up._is_bottleneck_up_proj = True   # calibrated init
 
         # --- output projection, eq. (19) ---
         # n_head * v_head_dim is NOT necessarily n_embd once v_head_dim is free (M9)
@@ -742,7 +740,7 @@ class MultiHeadLatentAttention(nn.Module):
         self.resid_dropout = nn.Dropout(config.dropout)
         self.dropout = config.dropout
 
-        self.scale = d_qk ** -0.5              # eq. (18), threats.md M1
+        self.scale = d_qk ** -0.5              # eq. (18)
         self.is_local = resolve_pattern(config.attn_pattern, config.n_layer, config.force_last_global)[layer_idx]
         self.window = config.window_size
         self.attn_impl = config.attn_impl
@@ -985,8 +983,7 @@ class MultiHeadLatentAttention(nn.Module):
 
         # 2b) THE ONLY TWO TENSORS THAT ARE EVER CACHED. Note what is NOT here:
         # k_nope and v are rebuilt below from c_KV and never stored. Caching them would
-        # give perfect quality with MHA-sized memory and quietly cancel the project
-        # (threats.md C3).
+        # give perfect quality with MHA-sized memory and quietly cancel the project.
         q_offset = None
         if cache is not None:
             kv_lat, k_rope_c, q_offset = _cache_step(
@@ -1029,7 +1026,7 @@ class MLP(nn.Module):
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu    = nn.GELU()
         self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.c_proj._is_residual_proj = True   # scaled init marker (threats.md M8)
+        self.c_proj._is_residual_proj = True   # scaled init marker
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
@@ -1071,15 +1068,15 @@ class GPTConfig:
     # --- attention mask (which kv positions are visible) ---
     attn_pattern: str = 'G'         # tiled over layers, e.g. 'LLLG'; last layer forced global
     window_size: int = 256          # W visible tokens INCLUDING self (see _mask_mod)
-    force_last_global: bool = True  # remediation.md #8. Set False ONLY for the all-local
-                                    # reading of "hybrid" (grid cell 7, news.md 6): with it
+    force_last_global: bool = True  # Set False ONLY for the all-local
+                                    # reading of "hybrid" (grid cell 7): with it
                                     # left on, attn_pattern='L' silently resolves to 7
                                     # local + 1 global and the cell measures the wrong thing
 
     # --- MLA hyperparameters (DeepSeek-V2 2.1), filled from head_dim in __post_init__ ---
-    kv_lora_rank: int = None        # d_c        default 4 * head_dim   (remediation.md #7)
+    kv_lora_rank: int = None        # d_c        default 4 * head_dim
     q_lora_rank: int = None         # d'_c       None = no query compression (DeepSeek-V2-Lite)
-    qk_nope_head_dim: int = None    # d_h        default head_dim, FULL   (remediation.md #5)
+    qk_nope_head_dim: int = None    # d_h        default head_dim, FULL
     qk_rope_head_dim: int = None    # d^R_h      default head_dim // 2, ADDITIVE
     v_head_dim: int = None          # d_v        default head_dim
     symmetric_head_dims: bool = False   # MLA only: force d_v = d_qk, see __post_init__
@@ -1117,7 +1114,7 @@ class GPTConfig:
         # 'additive' -- DeepSeek-V2 2.1.3, the default, and what every recorded number
         #     was measured with. The decoupled channel is ADDED to a full-width content
         #     part: d_qk = head_dim + d_rope. Content capacity is preserved, so a loss
-        #     gap is attributable to the compression alone (remediation.md #5), which is
+        #     gap is attributable to the compression alone, which is
         #     why the grid uses it. The price is that d_qk != d_v and d_qk is not a power
         #     of two: flex pads the score side (~33% of its attention FLOPs), flash
         #     refuses the call, and at head_dim=64 the padded backward does not compile
@@ -1224,7 +1221,7 @@ class GPT(nn.Module):
         if config.pos_encoding == 'learned':
             # learned absolute positions cannot generate past block_size and would have
             # to be allocated for the full generation length, which erodes the very
-            # memory saving SWA exists for (remediation.md #9)
+            # memory saving SWA exists for
             modules['wpe'] = nn.Embedding(config.block_size, config.n_embd)
         modules.update(
             drop = nn.Dropout(config.dropout),
@@ -1259,7 +1256,7 @@ class GPT(nn.Module):
 
         # Special scaled init on the residual projections, per the GPT-2 paper. nanoGPT
         # selects them by NAME (pn.endswith('c_proj.weight')), which is the single most
-        # dangerous trap of this codebase for our purpose (threats.md M8): the MLA
+        # dangerous trap of this codebase for our purpose: the MLA
         # output projection is called o_proj, so it would silently NOT receive the
         # 1/sqrt(2L) scaling. The MHA branch would then have the variance of its
         # residual stream controlled with depth and the MLA branch would not -- MLA
@@ -1269,8 +1266,8 @@ class GPT(nn.Module):
         # loudly at construction time.
         #
         # NOTE on the count: the original filter matches BOTH attn.c_proj and
-        # mlp.c_proj, i.e. two modules per layer. plan.md/remediation.md #6 write the
-        # assert as n_layer; that would exclude the MLP and change the baseline, so the
+        # mlp.c_proj, i.e. two modules per layer. Asserting n_layer
+        # instead would exclude the MLP and change the baseline, so the
         # faithful count is 2 * n_layer.
         n_scaled = 0
         for m in self.modules():
@@ -1281,16 +1278,16 @@ class GPT(nn.Module):
         assert n_scaled == 2 * config.n_layer, (
             f"scaled init reached {n_scaled} modules instead of {2 * config.n_layer}: "
             "some residual projection is unmarked and would train with a different "
-            "variance than the others (threats.md M8)")
+            "variance than the others")
 
-        # Bottleneck-calibrated init for the MLA up-projections (threats.md M7). Their
+        # Bottleneck-calibrated init for the MLA up-projections. Their
         # fan_in is the latent rank d_c, not n_embd, so the fixed std=0.02 of nanoGPT
         # gives them a much smaller output variance than a dense layer of the same
         # width, and the signal crosses two projections instead of one. DeepSeek 3.1.2
         # says it uses additional scaling factors at the width bottlenecks for exactly
-        # this reason. remediation.md #6 suggests std = fan_in ** -0.5.
+        # this reason. The textbook choice would be std = fan_in ** -0.5.
         #
-        # That fix overshoots, and mla_up_init='matched' is the alternative (audit M-2). The
+        # That choice overshoots, and mla_up_init='matched' is the alternative. The
         # input of an up-projection is an RMSNorm'd latent, i.e. unit RMS, so std = r^-1/2
         # gives k and v UNIT variance: 2.2x the std MHA gets from std=0.02 on an
         # n_embd-wide unit-RMS input. std = 0.02*sqrt(n_embd/r) makes the two equal, so the
@@ -1317,7 +1314,7 @@ class GPT(nn.Module):
         if non_embedding and 'wpe' in self.transformer:
             # with RoPE there is no wpe to subtract; the count then means something
             # slightly different, which matters for the cross-cell parameter matching
-            # of T3.5 (threats.md N7)
+            # of T3.5
             n_params -= self.transformer.wpe.weight.numel()
         return n_params
 
@@ -1395,7 +1392,7 @@ class GPT(nn.Module):
         # but want to use a smaller block size for some smaller, simpler model
         assert block_size <= self.config.block_size
         # GUARD: this surgery assumes learned position embeddings and the dense causal
-        # buffer of vanilla nanoGPT; neither survives RoPE or MLA (mappa_modifiche 1.2).
+        # buffer of vanilla nanoGPT; neither survives RoPE or MLA.
         assert self.config.pos_encoding == 'learned', "crop_block_size assumes wpe"
         assert self.config.attn_type == 'mha', "crop_block_size assumes vanilla MHA"
         self.config.block_size = block_size
@@ -1408,7 +1405,7 @@ class GPT(nn.Module):
     def from_pretrained(cls, model_type, override_args=None):
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
         # GUARD: the OpenAI checkpoints are plain MHA with learned positions; the state
-        # dict assert below cannot match an MLA/GQA model (threats.md N4).
+        # dict assert below cannot match an MLA/GQA model.
         override_args = override_args or {} # default to empty dict
         # only dropout can be overridden see more notes below
         assert all(k == 'dropout' for k in override_args)
@@ -1499,8 +1496,8 @@ class GPT(nn.Module):
         * the attention term assumes every query attends to all T positions. On a LOCAL
           layer it attends to min(T, W), so with W=256 at T=4096 the original formula
           overstates that layer's attention cost by 16x. Left uncorrected it reports an
-          MFU that quietly drops as the window shrinks -- plausible numbers, wrong
-          (threats.md N6). This is the window-aware accounting of nanochat.
+          MFU that quietly drops as the window shrinks -- plausible numbers, wrong.
+          This is the window-aware accounting of nanochat.
         * `12*H*Q*T` assumes the score and the value share one head dimension. MLA has
           d_qk = qk_nope + qk_rope for the score and v_head_dim for the value, and they
           differ. The general form is 6*H*(d_qk + d_v)*T_eff per layer per token, which
